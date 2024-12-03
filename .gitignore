@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+
+SplitChestPieces.py
+
+.vscode
+.venv
+.venv*
+
+.DS_Store
