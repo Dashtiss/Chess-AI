@@ -2,12 +2,13 @@ from DataClasses import Pieces
 from DataClasses.Images import imageResources as Images
 from DataClasses.Board import Board
 from MovementManger import GetMovements
+from MovementManger import IsCheckMate
 import settings
 import pygame
 
 
 class ChessBoard:
-    def __init__(self, screen: pygame.display):
+    def __init__(self, screen: pygame.display, useDefaultBoard: bool = True, board: list[list[str]] = None):
         """
         Initialize a new ChessBoard object.
 
@@ -19,13 +20,19 @@ class ChessBoard:
 
         self.screen: pygame.display = screen
         self.board: Board = Board()
-        self.board.generateDefaultBoard()
+        if useDefaultBoard:
+            self.board.generateDefaultBoard()
+        else:
+            if board:
+                self.board.board = board
+            else:
+                raise ValueError("No board provided")
         self.SelectedCoords: tuple = (-1, -1)
         self.PossiblePositions: list = []
 
         self.CurrentTurn = "White"
         pygame.init()
-
+        self.moveAudio = pygame.mixer.Sound("res/audio/moveAudio.mp3")
         print("Starting game")
 
         self.RunGame()
@@ -64,22 +71,22 @@ class ChessBoard:
             for x in range(settings.BoardSize[1]):
                 
                 if (x, y) in self.PossiblePositions:
-                    pygame.draw.rect(
+                    # Draw a smaller green circle with opacity for possible moves
+                    center_x = x * settings.SlotSize + settings.SlotSize // 2
+                    center_y = y * settings.SlotSize + settings.SlotSize // 2
+                    radius = settings.SlotSize // 4  # Make the indicator 1/4 of the slot size
+                    pygame.draw.circle(
                         self.screen,
-                        (255, 0, 0, 128),
-                        (
-                            x * settings.SlotSize,
-                            y * settings.SlotSize,
-                            settings.SlotSize,
-                            settings.SlotSize,
-                        ),
+                        (0, 255, 0, 128),  # Green with opacity
+                        (center_x, center_y),
+                        radius
                     )
                 
                 if self.SelectedCoords == (x, y):
-                    # will put a cyan square with a 50% opacity over the selected piece
+                    # Draw a subtle highlight for the selected piece
                     pygame.draw.rect(
                         self.screen,
-                        (0, 255, 255, 128),
+                        (135, 206, 235, 80),  # Light sky blue with lower opacity
                         (
                             x * settings.SlotSize,
                             y * settings.SlotSize,
@@ -132,10 +139,14 @@ class ChessBoard:
                         
                         if SelectedPiece.Color == self.CurrentTurn:
                             self.board.movePiece(self.SelectedCoords[0], self.SelectedCoords[1], x, y)
+                            # will play the audio named moveAudio.mp3 in res/audio
+                            
+                            self.moveAudio.play()
+                            
                             self.SelectedCoords = (-1, -1)
                             self.PossiblePositions = []
                             
-                            checkmate = self.IsCheckMate("White" if self.CurrentTurn == "Black" else "Black")
+                            checkmate = IsCheckMate(self.board, self.CurrentTurn)
                             if checkmate:
                                 print("Checkmate")
                                 pygame.quit()
@@ -175,4 +186,16 @@ class ChessBoard:
 
 screen = pygame.display.set_mode(settings.ScreenSize)
 
-ChessBoard(screen)
+# Custom board setup for checkmate in one move
+checkmate_board = [
+    ['-', '-', 'WQ', '-', 'BK', '-', '-', '-'],  # Black king on e8
+    ['-', '-', '-', '-', '-', 'BP', 'BP', '-'],  # Black pawns on f7, g7
+    ['-', '-', '-', '-', '-', '-', '-', '-'],
+    ['-', '-', '-', '-', '-', '-', '-', '-'],
+    ['-', '-', '-', 'WQ', '-', '-', '-', '-'],
+    ['-', '-', '-', '-', '-', '-', '-', '-'],  # White queen on d3
+    ['-', '-', '-', '-', '-', '-', '-', '-'],
+    ['-', '-', '-', '-', 'WK', '-', '-', '-'],  # White king on e1
+]
+
+ChessBoard(screen, useDefaultBoard=False, board=checkmate_board)
