@@ -8,3 +8,5 @@ SplitChestPieces.py
 .venv*
 venv
 .DS_Store
+games
+chess_game_*.txt

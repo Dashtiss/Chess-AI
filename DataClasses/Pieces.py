@@ -52,7 +52,7 @@ pieceOrder = {
     "BP": PieceType.Pawn
 }
 
-print("Making pieces")
+# print("Making pieces")
 import re
 
 Place = (0, 0)
@@ -86,4 +86,4 @@ for i, file in enumerate(files):
             pieces[list(pieceOrder.keys())[i]] = piece
 
 
-print(pieces)
+# print(pieces)
