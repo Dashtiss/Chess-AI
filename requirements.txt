@@ -1,3 +1,4 @@
 pygame>=2.5.0
-dataclasses>=0.6
-typing>=3.7.4.3
+chess>=1.9.4
+requests>=2.31.0
+tqdm>=4.65.0

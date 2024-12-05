@@ -1,89 +1,80 @@
-from .Images import imageResources
+from .Images import ImageResources
 from dataclasses import dataclass
+from enum import Enum, auto
+from typing import Dict, Union, Final
 import os
 
+class PieceColor(Enum):
+    WHITE = "White"
+    BLACK = "Black"
 
+class PieceNames(Enum):
+    WK = "White King"
+    WQ = "White Queen"
+    WB = "White Bishop"
+    WN = "White Knight"
+    WR = "White Rook"
+    WP = "White Pawn"
+    BK = "Black King"
+    BQ = "Black Queen"
+    BB = "Black Bishop"
+    BN = "Black Knight"
+    BR = "Black Rook"
+    BP = "Black Pawn"
 
+class PieceType(Enum):
+    KING = "King"
+    QUEEN = "Queen"
+    BISHOP = "Bishop"
+    KNIGHT = "Knight"
+    ROOK = "Rook"
+    PAWN = "Pawn"
 
-@dataclass
-class pieceNames:
-    WK: str = "White King"
-    WQ: str = "White Queen"
-    WB: str = "White Bishop"
-    WN: str = "White Knight"
-    WR: str = "White Rook"
-    WP: str = "White Pawn"
-    BK: str = "Black King"
-    BQ: str = "Black Queen"
-    BB: str = "Black Bishop"
-    BN: str = "Black Knight"
-    BR: str = "Black Rook"
-    BP: str = "Black Pawn"
-    
-@dataclass
-class PieceType:
-    King: str = "King"
-    Queen: str = "Queen"
-    Bishop: str = "Bishop"
-    Knight: str = "Knight"
-    Rook: str = "Rook"
-    Pawn: str = "Pawn"
-    
 @dataclass
 class PieceImage:
-    Name: str | pieceNames
-    Image: str
-    Type: str | PieceType
-    Color: str
-    
-pieces: dict[str, PieceImage] = {}
-pieceOrder = {
-    "WK": PieceType.King, 
-    "WQ": PieceType.Queen, 
-    "WB": PieceType.Bishop, 
-    "WN": PieceType.Knight,
-    "WR": PieceType.Rook, 
-    "WP": PieceType.Pawn, 
-    "BK": PieceType.King, 
-    "BQ": PieceType.Queen, 
-    "BB": PieceType.Bishop, 
-    "BN": PieceType.Knight,
-    "BR": PieceType.Rook, 
-    "BP": PieceType.Pawn
+    Name: str  # The piece identifier (e.g., "WK", "BP")
+    Image: str  # Path to the image file
+    Type: PieceType  # The type of piece
+    Color: PieceColor  # The color of the piece
+
+# Dictionary mapping piece identifiers to their PieceImage objects
+pieces: Dict[str, PieceImage] = {}
+
+# Mapping of piece identifiers to their types
+pieceOrder: Final[Dict[str, PieceType]] = {
+    "WK": PieceType.KING,
+    "WQ": PieceType.QUEEN,
+    "WB": PieceType.BISHOP,
+    "WN": PieceType.KNIGHT,
+    "WR": PieceType.ROOK,
+    "WP": PieceType.PAWN,
+    "BK": PieceType.KING,
+    "BQ": PieceType.QUEEN,
+    "BB": PieceType.BISHOP,
+    "BN": PieceType.KNIGHT,
+    "BR": PieceType.ROOK,
+    "BP": PieceType.PAWN
 }
 
-# print("Making pieces")
 import re
 
-Place = (0, 0)
-
 # Function to extract the number from the filename
-def extract_number(filename):
+def extract_number(filename: str) -> int:
     match = re.search(r'Piece_(\d+)\.png', filename)
-    return int(match.group(1)) if match else float('inf')  # Default to infinity if no number is found
+    return int(match.group(1)) if match else float('inf')
 
 # Sort files by the numeric value in their names
 files = sorted(os.listdir("res/ChessPieces"), key=extract_number)
 
 for i, file in enumerate(files):
     if file.endswith(".png"):
-        if list(pieceOrder.keys())[i].startswith("W"):
-            
-            piece = PieceImage(
-                Name=list(pieceOrder.keys())[i],
-                Image=os.path.join("res/ChessPieces", file),
-                Type=list(pieceOrder.values())[i],
-                Color="White"
-            )
-            pieces[list(pieceOrder.keys())[i]] = piece
-        elif list(pieceOrder.keys())[i].startswith("B"):
-            piece = PieceImage(
-                Name=list(pieceOrder.keys())[i],
-                Image=os.path.join("res/ChessPieces", file),
-                Type=list(pieceOrder.values())[i],
-                Color="Black"
-            )
-            pieces[list(pieceOrder.keys())[i]] = piece
-
-
-# print(pieces)
+        piece_key = list(pieceOrder.keys())[i]
+        piece_color = PieceColor.WHITE if piece_key.startswith("W") else PieceColor.BLACK
+        
+        piece = PieceImage(
+            Name=piece_key,
+            Image=os.path.join("res/ChessPieces", file),
+            Type=pieceOrder[piece_key],
+            Color=piece_color
+        )
+        pieces[piece_key] = piece

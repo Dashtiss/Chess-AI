@@ -10,3 +10,8 @@ venv
 .DS_Store
 games
 chess_game_*.txt
+
+stockfish-macos
+stockfish-windows.exe
+
+Stockfish
