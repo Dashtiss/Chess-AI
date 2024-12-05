@@ -6,5 +6,5 @@ SplitChestPieces.py
 .vscode
 .venv
 .venv*
-
+venv
 .DS_Store

@@ -1,201 +1,168 @@
-from DataClasses import Pieces
-from DataClasses.Images import imageResources as Images
-from DataClasses.Board import Board
-from MovementManger import GetMovements
-from MovementManger import IsCheckMate
-import settings
 import pygame
+import settings
+from DataClasses.Board import Board
+from DataClasses.Pieces import pieces, PieceImage
+from MovementManger import GetMovements, IsCheckMate
+from typing import List, Tuple, Dict
+from enum import Enum, auto
+from dataclasses import dataclass
 
+class GameState(Enum):
+    PLAYING = auto()
+    CHECKMATE = auto()
+
+@dataclass
+class GameContext:
+    current_turn: str = "White"
+    selected_coords: Tuple[int, int] = (-1, -1)
+    possible_moves: List[Tuple[int, int]] = None
+    state: GameState = GameState.PLAYING
+    can_undo: bool = False
+    
+    def __post_init__(self):
+        if self.possible_moves is None:
+            self.possible_moves = []
 
 class ChessBoard:
-    def __init__(self, screen: pygame.display, useDefaultBoard: bool = True, board: list[list[str]] = None):
-        """
-        Initialize a new ChessBoard object.
-
-        Parameters:
-        screen (pygame.display): The Pygame display to draw the board on.
-
-        Initializes a new Board object and starts the game loop.
-        """
-
-        self.screen: pygame.display = screen
-        self.board: Board = Board()
-        if useDefaultBoard:
-            self.board.generateDefaultBoard()
-        else:
-            if board:
-                self.board.board = board
-            else:
-                raise ValueError("No board provided")
-        self.SelectedCoords: tuple = (-1, -1)
-        self.PossiblePositions: list = []
-
-        self.CurrentTurn = "White"
+    def __init__(self):
         pygame.init()
-        self.moveAudio = pygame.mixer.Sound("res/audio/moveAudio.mp3")
-        print("Starting game")
-
-        self.RunGame()
-
-    def IsCheckMate(self, Color: str):
-        # will check if the king is gone
+        pygame.mixer.init()
         
-        for Y in self.board:
-            for X in self.board[Y]:
-                if self.board[Y][X].Type == "King" and self.board[Y][X].Color == Color:
-                    return False
-    def draw(self):
-        # will set the background to the board image
-        """
-        Draws the chess board and pieces on the screen.
+        self.screen = pygame.display.set_mode(settings.ScreenSize)
+        pygame.display.set_caption("Chess")
+        
+        self.board = Board()
+        self.board.generateDefaultBoard()
+        self.game = GameContext()
+        
+        # Initialize the move sound
+        self.move_audio = pygame.mixer.Sound("res/audio/move.mp3")
+        
+        # Load piece images
+        self.piece_images: Dict[str, pygame.Surface] = {}
+        for piece_name, piece in pieces.items():
+            self.piece_images[piece_name] = pygame.image.load(piece.Image)
 
-        This function sets the background to the board image and overlays any selected
-        pieces with a semi-transparent cyan square. It iterates over each slot on the
-        board, rendering each piece at its respective position.
+    def _handle_piece_movement(self, x: int, y: int) -> None:
+        """Handle the movement of a piece to the given coordinates."""
+        if (x, y) not in self.game.possible_moves:
+            return
 
-        The function assumes that `self.SelectedCoords` contains the coordinates of the
-        selected piece, and that the board object can determine if a piece exists at a
-        given coordinate and retrieve the piece image.
+        from_x, from_y = self.game.selected_coords
+        piece = self.board.getPiece(from_x, from_y)
+        if not piece or piece.Color != self.game.current_turn:
+            return
 
-        :return: None
-        """
-        self.screen.fill((255, 255, 255))
-        self.screen.blit(pygame.image.load(Images.Board), (0, 0))
-        """font = pygame.font.Font('freesansbold.ttf', 32)
-        # will draw debug postions using the size of each cube
-        for i in range(settings.BoardSize[0]):
-            for j in range(settings.BoardSize[1]):
-                text = font.render(str((i, j)), True, (0, 0, 0))
-                self.screen.blit(text, (i*settings.SlotSize, j*settings.SlotSize))"""
-        for y in range(settings.BoardSize[0]):
-            for x in range(settings.BoardSize[1]):
-                
-                if (x, y) in self.PossiblePositions:
-                    # Draw a smaller green circle with opacity for possible moves
-                    center_x = x * settings.SlotSize + settings.SlotSize // 2
-                    center_y = y * settings.SlotSize + settings.SlotSize // 2
-                    radius = settings.SlotSize // 4  # Make the indicator 1/4 of the slot size
-                    pygame.draw.circle(
-                        self.screen,
-                        (0, 255, 0, 128),  # Green with opacity
-                        (center_x, center_y),
-                        radius
-                    )
-                
-                if self.SelectedCoords == (x, y):
-                    # Draw a subtle highlight for the selected piece
-                    pygame.draw.rect(
-                        self.screen,
-                        (135, 206, 235, 80),  # Light sky blue with lower opacity
-                        (
-                            x * settings.SlotSize,
-                            y * settings.SlotSize,
-                            settings.SlotSize,
-                            settings.SlotSize,
-                        ),
-                    )
-                if self.board.isPiece(x, y):
-                    piece = self.board.getPiece(x, y)
-                    if piece == None:
-                        continue
+        # Save current state before making the move
+        self.board.previous_states.append(self.board.copy())
+        self.game.can_undo = True
+
+        # Execute the move
+        self.board.handleCastling(from_x, from_y, x, y)
+        self.board.setPiece(x, y, piece)
+        self.board.removePiece(from_x, from_y)
+        self.board.LastMove = (self.game.selected_coords, (x, y))
+        
+        # Reset selection and play sound
+        self.game.selected_coords = (-1, -1)
+        self.game.possible_moves = []
+        self.move_audio.play()
+
+        # Check game state and switch turns
+        if IsCheckMate(self.board, self.game.current_turn):
+            self.game.state = GameState.CHECKMATE
+        else:
+            self.game.current_turn = "Black" if self.game.current_turn == "White" else "White"
+
+    def _handle_piece_selection(self, x: int, y: int) -> None:
+        """Handle the selection of a piece at the given coordinates."""
+        piece = self.board.getPiece(x, y)
+        if piece and piece.Color == self.game.current_turn:
+            self.game.selected_coords = (x, y)
+            self.game.possible_moves = GetMovements(x, y, self.board)
+        else:
+            self.game.selected_coords = (-1, -1)
+            self.game.possible_moves = []
+
+    def _draw_board(self) -> None:
+        """Draw the chess board."""
+        for y in range(settings.BoardSize[1]):
+            for x in range(settings.BoardSize[0]):
+                color = (240, 217, 181) if (x + y) % 2 == 0 else (181, 136, 99)
+                pygame.draw.rect(
+                    self.screen,
+                    color,
+                    (x * settings.SlotSize, y * settings.SlotSize, settings.SlotSize, settings.SlotSize),
+                )
+
+    def _draw_move_indicators(self) -> None:
+        """Draw indicators for possible moves."""
+        if self.game.selected_coords != (-1, -1):
+            for move in self.game.possible_moves:
+                pygame.draw.circle(
+                    self.screen,
+                    (100, 100, 100),
+                    (move[0] * settings.SlotSize + settings.SlotSize // 2,
+                     move[1] * settings.SlotSize + settings.SlotSize // 2),
+                    10
+                )
+
+    def _draw_pieces(self) -> None:
+        """Draw all pieces on the board."""
+        for y in range(settings.BoardSize[1]):
+            for x in range(settings.BoardSize[0]):
+                piece = self.board.getPiece(x, y)
+                if piece:
                     self.screen.blit(
-                        pygame.image.load(piece.Image),
+                        self.piece_images[piece.Name],
                         (x * settings.SlotSize, y * settings.SlotSize),
                     )
 
-    def RunGame(self):
-        """
-        Runs the main game loop for the chess application.
-
-        This method continuously checks for events, such as quitting the game or mouse clicks.
-        It updates the selected piece coordinates based on mouse clicks and redraws the board
-        if necessary. The game loop runs indefinitely, refreshing the display at 24 frames per second.
-
-        :return: None
-        """
-        self.draw()
-        clock = pygame.time.Clock()
-        Updated = False
-        while True:
-            Updated = False
-
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    quit()
-
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    pos = pygame.mouse.get_pos()
-                    x = int(pos[0] // settings.SlotSize)
-                    y = int(pos[1] // settings.SlotSize)
-                    print(x, y)
-                    piece: Pieces.PieceImage = self.board.getPiece(x, y)
+    def _handle_events(self) -> bool:
+        """Handle game events. Returns False if the game should exit."""
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+                
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_BACKSPACE:
+                if self.game.can_undo and self.game.state == GameState.PLAYING:
+                    self.board.undoMove()
+                    self.game.current_turn = "Black" if self.game.current_turn == "White" else "White"
+                    self.game.selected_coords = (-1, -1)
+                    self.game.possible_moves = []
+                    self.game.can_undo = len(self.board.previous_states) > 0
+                
+            if event.type == pygame.MOUSEBUTTONDOWN and self.game.state == GameState.PLAYING:
+                x = int(pygame.mouse.get_pos()[0] // settings.SlotSize)
+                y = int(pygame.mouse.get_pos()[1] // settings.SlotSize)
+                
+                if (x, y) in self.game.possible_moves:
+                    self._handle_piece_movement(x, y)
+                else:
+                    self._handle_piece_selection(x, y)
                     
-                    if (x,y) in self.PossiblePositions:
-                        print("Moving piece")
-                        if self.board.getPiece(self.SelectedCoords[0], self.SelectedCoords[1]) == None:
-                            continue
-                        SelectedPiece = self.board.getPiece(self.SelectedCoords[0], self.SelectedCoords[1])
-                        
-                        if SelectedPiece.Color == self.CurrentTurn:
-                            self.board.movePiece(self.SelectedCoords[0], self.SelectedCoords[1], x, y)
-                            # will play the audio named moveAudio.mp3 in res/audio
-                            
-                            self.moveAudio.play()
-                            
-                            self.SelectedCoords = (-1, -1)
-                            self.PossiblePositions = []
-                            
-                            checkmate = IsCheckMate(self.board, self.CurrentTurn)
-                            if checkmate:
-                                print("Checkmate")
-                                pygame.quit()
-                                exit()
-                            
-                            self.CurrentTurn = "White" if self.CurrentTurn == "Black" else "Black"
+        return True
 
-                            continue
-                            
-                    if piece != None:
-                        # print(piece.name)
-                        if piece.Color != self.CurrentTurn:
-                            continue
-                        self.SelectedCoords = (x, y)
-                        
-                        try:
-                            self.PossiblePositions = GetMovements(x, y, self.board)
-                        except NotImplementedError:
-                            print(
-                                f"Piece {piece.Name} moves has not been implemented yet"
-                            )
-                            self.PossiblePositions = []
-                    else:
-                        # print("No piece")
-                        self.SelectedCoords = (-1, -1)
-                        self.PossiblePositions = []
-                if not Updated:
-                    self.draw()
-                    pygame.display.update()
-                    pygame.display.set_caption(
-                                f"Chess - {self.CurrentTurn} Turn"
-                            )
-                    Updated = True
-                    
-            clock.tick(24)
+    def draw(self) -> None:
+        """Draw the complete game state."""
+        self._draw_board()
+        self._draw_move_indicators()
+        self._draw_pieces()
+        pygame.display.update()
+        pygame.display.set_caption(f"Chess - {self.game.current_turn}'s Turn")
 
+    def run(self) -> None:
+        """Run the main game loop."""
+        running = True
+        while running:
+            running = self._handle_events()
+            self.draw()
+            
+        pygame.quit()
 
-screen = pygame.display.set_mode(settings.ScreenSize)
+def main():
+    game = ChessBoard()
+    game.run()
 
-# Custom board setup for checkmate in one move
-checkmate_board = [
-    ['-', '-', 'WQ', '-', 'BK', '-', '-', '-'],  # Black king on e8
-    ['-', '-', '-', '-', '-', 'BP', 'BP', '-'],  # Black pawns on f7, g7
-    ['-', '-', '-', '-', '-', '-', '-', '-'],
-    ['-', '-', '-', '-', '-', '-', '-', '-'],
-    ['-', '-', '-', 'WQ', '-', '-', '-', '-'],
-    ['-', '-', '-', '-', '-', '-', '-', '-'],  # White queen on d3
-    ['-', '-', '-', '-', '-', '-', '-', '-'],
-    ['-', '-', '-', '-', 'WK', '-', '-', '-'],  # White king on e1
-]
-
-ChessBoard(screen, useDefaultBoard=False, board=checkmate_board)
+if __name__ == "__main__":
+    main()
