@@ -86,13 +86,18 @@ def get_pawn_moves(ctx: MoveContext) -> Set[Tuple[int, int]]:
         new_x = x + dx
         new_y = y + direction
         if 0 <= new_x < 8 and 0 <= new_y < 8:
-            # Normal capture
+            # Only allow diagonal moves if there's a piece to capture
             target = ctx.board.getPiece(new_x, new_y)
             if target and target.Color.value != ctx.color:
                 moves.add((new_x, new_y))
-            # En passant capture
+            # Or if en passant capture is possible
             elif ctx.board.en_passant_target == (new_x, new_y):
-                moves.add((new_x, new_y))
+                # Verify en passant capture
+                enemy_pawn_x = new_x
+                enemy_pawn_y = new_y - direction  # The actual position of the enemy pawn
+                enemy_pawn = ctx.board.getPiece(enemy_pawn_x, enemy_pawn_y)
+                if enemy_pawn and enemy_pawn.Type == PieceType.PAWN and enemy_pawn.Color.value != ctx.color:
+                    moves.add((new_x, new_y))
     
     return moves
 
@@ -253,7 +258,16 @@ def get_piece_moves(board: Board, x: int, y: int, check_king_safety=True) -> Set
         for move in moves:
             # Create temporary board state
             temp_board = board.copy()
-            temp_board.movePiece((x, y), move)
+            move_x, move_y = move
+            
+            # Handle en passant capture
+            if piece.Type == PieceType.PAWN and (move_x, move_y) == temp_board.en_passant_target:
+                direction = -1 if piece.Color.value == "White" else 1
+                # Remove the captured pawn
+                temp_board.removePiece(move_x, move_y - direction)
+            
+            # Make the move
+            temp_board.movePiece(x, y, move_x, move_y)
             
             # Check if king would be in check after move
             if not is_king_in_check(temp_board, piece.Color.value, check_king_moves=False):

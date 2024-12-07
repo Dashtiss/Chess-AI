@@ -20,7 +20,7 @@ class ButtonState(Enum):
 
 @dataclass
 class GameSettings:
-    use_stockfish: bool = True
+    use_stockfish: bool = False  # Changed to False for default 2-player mode
     stockfish_difficulty: StockfishDifficulty = StockfishDifficulty.NORMAL
     screen_size: Tuple[int, int] = (640, 640)
     board_size: Tuple[int, int] = (8, 8)

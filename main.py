@@ -17,6 +17,7 @@ from StockfishDifficulty import StockfishDifficulty
 from MainMenu import MainMenu
 from StockfishDownloader import download_stockfish
 from LoadingScreen import LoadingScreen
+from SplashScreen import SplashScreen
 import chess
 
 class GameState(Enum):
@@ -82,14 +83,36 @@ class ChessBoard:
         self.game: GameContext = GameContext()
         self.start_time: str = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        self.move_audio: pygame.mixer.Sound = pygame.mixer.Sound("res/audio/move.mp3")
+        # Get resource paths
+        def resource_path(relative_path):
+            if getattr(sys, 'frozen', False):
+                if hasattr(sys, '_MEIPASS'):
+                    # PyInstaller path
+                    base_path = sys._MEIPASS
+                else:
+                    # macOS app bundle Resources path
+                    bundle_dir = os.path.abspath(os.path.dirname(sys.executable))
+                    if bundle_dir.endswith('MacOS'):
+                        base_path = os.path.abspath(os.path.join(bundle_dir, '..', 'Resources'))
+                    else:
+                        base_path = os.path.abspath(".")
+            else:
+                # Development environment
+                base_path = os.path.abspath(".")
+            
+            return os.path.join(base_path, relative_path)
+        
+        # Load audio with resource path
+        self.move_audio: pygame.mixer.Sound = pygame.mixer.Sound(resource_path("res/audio/move.mp3"))
         
         self.chess_moves: List[str] = []
         self.chess_board = chess.Board()  
         
+        # Load piece images with resource path
         self.piece_images: Dict[str, pygame.Surface] = {}
         for piece_name, piece in pieces.items():
-            self.piece_images[piece_name] = pygame.image.load(piece.Image).convert_alpha()
+            image_path = resource_path(piece.Image)
+            self.piece_images[piece_name] = pygame.image.load(image_path).convert_alpha()
         
         self.board_positions: List[List[Tuple[int, int, int, int]]] = [
             [
@@ -131,15 +154,9 @@ class ChessBoard:
         """Initialize Stockfish engine with retries"""
         for attempt in range(self.stockfish_init_retries):
             try:
-                # Get the directory where the executable is running
-                if getattr(sys, 'frozen', False):
-                    # If running as exe (PyInstaller)
-                    exe_dir = os.path.dirname(sys.executable)
-                else:
-                    # If running as script
-                    exe_dir = os.path.dirname(os.path.abspath(__file__))
-                
-                stockfish_dir = os.path.join(exe_dir, "Stockfish")
+                # Use the home directory location for Stockfish
+                home_dir = os.path.expanduser("~")
+                stockfish_dir = os.path.join(home_dir, ".chess_ai", "stockfish")
                 stockfish_path = os.path.join(stockfish_dir, self.get_stockfish_filename())
                 print(f"Attempting to initialize Stockfish from: {stockfish_path}")
                 
@@ -489,10 +506,36 @@ class ChessBoard:
                     
                     self.game.current_turn = "White"
                     self.game_info.update_turn(self.game.current_turn)
-                else:
-                    self.game.current_turn = "White"
-                    self.game_info.update_turn(self.game.current_turn)
 
+    def _save_game_history(self) -> None:
+        """Save the game history to a file"""
+        # Create games directory if it doesn't exist
+        games_dir = os.path.join(os.path.dirname(__file__), "games")
+        os.makedirs(games_dir, exist_ok=True)
+        
+        # Generate filename with timestamp
+        filename = f"game_{self.start_time}.txt"
+        filepath = os.path.join(games_dir, filename)
+        
+        # Write game history to file
+        with open(filepath, "w") as f:
+            f.write(f"Game played on {self.start_time}\n")
+            f.write(f"Winner: {self.game.winner}\n\n")
+            f.write("Move History:\n")
+            for move in self.game.move_history:
+                piece = move['piece']
+                # Handle string piece representation
+                if isinstance(piece, str):
+                    color = 'White' if piece[0] == 'W' else 'Black'
+                    piece_type = piece[1:]  # Remove W/B prefix
+                else:
+                    color = piece.Color.value
+                    piece_type = piece.Type.value
+                    
+                f.write(f"{color}'s {piece_type} from ({move['from'][0]}, {move['from'][1]}) "
+                       f"to ({move['to'][0]}, {move['to'][1]})\n")
+            f.write(f"\nFinal FEN: {self.chess_board.fen()}")
+    
     def _sync_chess_board(self) -> chess.Board:
         board = chess.Board()
         board.clear()  
@@ -710,9 +753,29 @@ class ChessBoard:
             self.stockfish = None
 
 def main() -> None:
+    # Set up working directory for macOS app bundle
+    if getattr(sys, 'frozen', False):
+        if hasattr(sys, '_MEIPASS'):
+            os.chdir(sys._MEIPASS)
+        else:
+            bundle_dir = os.path.abspath(os.path.dirname(sys.executable))
+            if bundle_dir.endswith('MacOS'):
+                resources_dir = os.path.join(bundle_dir, '..', 'Resources')
+                os.chdir(resources_dir)
+
+    # Show splash screen immediately
+    splash = SplashScreen(settings.ScreenSize)
+    splash.update()
+    
+    # Initialize pygame after showing splash screen
     pygame.init()
     screen = pygame.display.set_mode(settings.ScreenSize)
     pygame.display.set_caption("Chess AI")
+    
+    # Keep splash screen visible during resource loading
+    for _ in range(10):  # Show splash for a short time
+        splash.update()
+        pygame.time.wait(50)
 
     while True:
         menu = MainMenu(screen)
@@ -726,12 +789,17 @@ def main() -> None:
             
             def progress_callback(progress):
                 loading_screen.update(progress)
+                pygame.time.wait(10)  # Small delay to ensure loading screen updates
             
             stockfish_path = download_stockfish(progress_callback)
             
             if not stockfish_path:
                 print("Failed to download Stockfish. AI opponent will be disabled.")
                 game_settings.use_stockfish = False
+            else:
+                # Give user feedback that Stockfish is ready
+                loading_screen.update(100)
+                pygame.time.wait(500)  # Show 100% completion briefly
         
         game = ChessBoard(
             use_stockfish=game_settings.use_stockfish,
@@ -757,9 +825,10 @@ def main() -> None:
             pygame.display.flip()
             clock.tick(60)
             
-            if game.game.state == GameState.CHECKMATE_MENU:
-                pygame.time.wait(2000)
-                running = False
+            # Remove the automatic return to main menu
+            # if game.game.state == GameState.CHECKMATE_MENU:
+            #     pygame.time.wait(2000)
+            #     running = False
         
         game.cleanup()
 

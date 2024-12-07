@@ -15,3 +15,13 @@ stockfish-macos
 stockfish-windows.exe
 
 Stockfish
+
+*.spec
+
+dist
+build
+
+backups
+
+.nuitka
+nuitka-crash-report.xml

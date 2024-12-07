@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Dict, Union, Final
 import os
+import sys
 
 class PieceColor(Enum):
     WHITE = "White"
@@ -58,13 +59,23 @@ pieceOrder: Final[Dict[str, PieceType]] = {
 
 import re
 
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 # Function to extract the number from the filename
 def extract_number(filename: str) -> int:
     match = re.search(r'Piece_(\d+)\.png', filename)
     return int(match.group(1)) if match else float('inf')
 
 # Sort files by the numeric value in their names
-files = sorted(os.listdir("res/ChessPieces"), key=extract_number)
+chess_pieces_path = resource_path("res/ChessPieces")
+files = sorted(os.listdir(chess_pieces_path), key=extract_number)
 
 for i, file in enumerate(files):
     if file.endswith(".png"):
@@ -73,7 +84,7 @@ for i, file in enumerate(files):
         
         piece = PieceImage(
             Name=piece_key,
-            Image=os.path.join("res/ChessPieces", file),
+            Image=os.path.join(chess_pieces_path, file),
             Type=pieceOrder[piece_key],
             Color=piece_color
         )

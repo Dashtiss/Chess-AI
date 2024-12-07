@@ -2,6 +2,7 @@ import os
 import sys
 import requests
 import platform
+import time
 from tqdm import tqdm
 
 def get_stockfish_url():
@@ -24,34 +25,47 @@ def get_stockfish_filename():
     else:  # Linux
         return "stockfish-linux"
 
+def get_stockfish_dir():
+    """Get the directory where Stockfish should be stored"""
+    if getattr(sys, 'frozen', False):
+        # If running as exe (PyInstaller)
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        # If running as script
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Use user's home directory for persistent storage
+    home_dir = os.path.expanduser("~")
+    stockfish_dir = os.path.join(home_dir, ".chess_ai", "stockfish")
+    os.makedirs(stockfish_dir, exist_ok=True)
+    return stockfish_dir
+
 def download_stockfish(callback=None):
     """Download Stockfish from GitHub with progress tracking"""
     url = get_stockfish_url()
     filename = get_stockfish_filename()
-    
-    # Get the directory where the executable is running
-    if getattr(sys, 'frozen', False):
-        # If running as exe (PyInstaller)
-        exe_dir = os.path.dirname(sys.executable)
-    else:
-        # If running as script
-        exe_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    stockfish_dir = os.path.join(exe_dir, "Stockfish")
-    os.makedirs(stockfish_dir, exist_ok=True)
-    
+    stockfish_dir = get_stockfish_dir()
     target_path = os.path.join(stockfish_dir, filename)
     
-    # Skip download if file already exists
+    # Skip download if file already exists and is valid
     if os.path.exists(target_path):
+        # Verify file permissions
+        if platform.system() != "Windows":
+            current_perms = os.stat(target_path).st_mode & 0o777
+            if current_perms != 0o755:
+                os.chmod(target_path, 0o755)
+        
         if callback:
-            callback(100)  # Indicate completion
+            # Show quick progress for cached file
+            for progress in range(0, 101, 20):
+                callback(progress)
+                time.sleep(0.05)
         return target_path
     
     try:
         # Send a GET request to the URL
         response = requests.get(url, stream=True)
-        response.raise_for_status()  # Raise an exception for bad status codes
+        response.raise_for_status()
         
         # Get the total file size
         total_size = int(response.headers.get('content-length', 0))
@@ -60,6 +74,8 @@ def download_stockfish(callback=None):
         with open(target_path, 'wb') as f:
             if total_size == 0:
                 f.write(response.content)
+                if callback:
+                    callback(100)
             else:
                 downloaded = 0
                 for data in response.iter_content(chunk_size=4096):

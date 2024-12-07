@@ -29,6 +29,36 @@ cd chess-ai
 pip install -r requirements.txt
 ```
 
+## Building Executables
+
+### For macOS
+1. Make sure you have Python and pip installed
+2. Run the build script:
+```bash
+chmod +x build.sh  # Make the script executable
+./build.sh
+```
+The macOS app will be created in the `dist` directory as `ChessAI.app`
+
+### For Windows
+1. Make sure you have Python and pip installed
+2. Run the build script:
+```bash
+build_windows.bat
+```
+The Windows executable will be created in the `dist` directory as `ChessAI.exe`
+
+### Running from Source
+If you prefer to run from source instead of building:
+1. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+2. Run the game:
+```bash
+python main.py
+```
+
 ## Running the Game
 ```bash
 python main.py
